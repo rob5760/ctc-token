@@ -51,13 +51,9 @@ contract CTCToken is IERC20 {
 
     uint public _totalSupply = 1000000000e18;
 
-    uint public _icoSupply = 510000000e18;
+    uint public _icoSupply = 200000000e18;
 
-    uint public _distributionSupply = 490000000e18;
-    uint public _partnershipAndAdvisorsFundSupply = 100000000e18;
-    uint public _researchedForFuturedStackeholderFundSupply = 160000000e18;
-    uint public _bounties = 20000000e18;
-    uint public _requitixCoreTeamFundSupply = 210000000e18;
+    uint public _companySupply = 800000000e18;
 
     // Balances for each account
     mapping (address => uint256) balances;
@@ -78,7 +74,12 @@ contract CTCToken is IERC20 {
     // how many token units a buyer gets per wei
     uint public PRICE;
 
+    uint public bonusThreshold;
+    uint public bonusAmount;
+
     uint public minContribAmount = 0.01 ether; // 0.01 ether
+
+    uint public hardCap = 200000 ether;
 
     // amount of raised money in wei
     uint256 public fundRaised;
@@ -120,13 +121,16 @@ contract CTCToken is IERC20 {
     // Constructor
     // @notice CTCToken Contract
     // @return the transaction address
-    function CTCToken(uint256 _startTime, uint256 _endTime, address _multisig, uint _tokenPrice) {
-        require(_startTime >= getNow() && _endTime >= _startTime && _tokenPrice > 0 && _multisig != 0x0);
+    function CTCToken(uint256 _startTime, uint256 _endTime, address _multisig, uint _tokenPrice, uint _bonusThreshold, uint _bonusAmount) {
+        require(_startTime >= getNow() && _endTime >= _startTime && _tokenPrice > 0 && _multisig != 0x0 && _bonusThreshold > 0 && _bonusAmount > 0);
 
         startTime = _startTime;
         endTime = _endTime;
         multisig = _multisig;
-        PRICE = _tokenPrice;
+    //    PRICE = _tokenPrice;
+        PRICE = 1000;
+        bonusThreshold = _bonusThreshold;
+        bonusAmount = _bonusAmount;
 
         balances[multisig] = _totalSupply;
 
@@ -151,13 +155,16 @@ contract CTCToken is IERC20 {
 
         require(_icoSupply >= tokens);
 
+        if ( tokens >= bonusThreshold ) {
+            tokens = tokens.add(bonusAmount)
+        }
         // update state
         fundRaised = fundRaised.add(weiAmount);
 
         balances[multisig] = balances[multisig].sub(tokens);
         balances[recipient] = balances[recipient].add(tokens);
 
-       _icoSupply = _icoSupply.sub(tokens);
+        _icoSupply = _icoSupply.sub(tokens);
 
         TokenPurchase(msg.sender, recipient, weiAmount, tokens);
 
@@ -175,7 +182,8 @@ contract CTCToken is IERC20 {
         bool withinPeriod = getNow() >= startTime && getNow() <= endTime;
         bool nonZeroPurchase = msg.value != 0;
         bool minContribution = minContribAmount <= msg.value;
-        return withinPeriod && nonZeroPurchase && minContribution;
+        bool notReachedHardCap = harCap >= fundRaised;
+        return withinPeriod && nonZeroPurchase && minContribution && notReachedHardCap;
     }
 
     // @return true if crowdsale current lot event has ended
@@ -217,13 +225,14 @@ contract CTCToken is IERC20 {
             PauseTradable();
     }
 
-    // Halt or Resume all operations on contract & Crowd Sale
-    function haltAllOperation(bool _active) onlyOwner {
-        active = _active;
-        if (active)
-            ResumeTokenAllOperation();
-        else
-            HaltTokenAllOperation();
+    //Change startTime to start ICO manually
+    function changeStartTime(uint256 _startTime) onlyOwner {
+        startTime = _startTime;
+    }
+
+    //Change endTime to end ICO manually
+    function changeStartTime(uint256 _startTime) onlyOwner {
+        endTime = _endTime;
     }
 
     // @return total tokens supplied
@@ -239,47 +248,14 @@ contract CTCToken is IERC20 {
     }
 
     // Token distribution to founder, develoment team, partners, charity, and bounty
-    function sendPartnershipAndAdvisorsFundSupplyToken(address to, uint256 value) onlyOwner isActive {
+    function sendcompanySupplyToken(address to, uint256 value) onlyOwner isActive {
         require (
-            to != 0x0 && value > 0 && _partnershipAndAdvisorsFundSupply >= value
+            to != 0x0 && value > 0 && _companySupply >= value
         );
 
         balances[multisig] = balances[multisig].sub(value);
         balances[to] = balances[to].add(value);
-        _partnershipAndAdvisorsFundSupply = _partnershipAndAdvisorsFundSupply.sub(value);
-        Transfer(multisig, to, value);
-    }
-
-    function sendResearchedForFuturedStackeholderFundSupplyToken(address to, uint256 value) onlyOwner isActive {
-        require (
-            to != 0x0 && value > 0 && _researchedForFuturedStackeholderFundSupply >= value
-        );
-
-        balances[multisig] = balances[multisig].sub(value);
-        balances[to] = balances[to].add(value);
-        _researchedForFuturedStackeholderFundSupply = _researchedForFuturedStackeholderFundSupply.sub(value);
-        Transfer(multisig, to, value);
-    }
-
-    function sendBountiesToken(address to, uint256 value) onlyOwner isActive {
-        require (
-            to != 0x0 && value > 0 && _bounties >= value
-        );
-
-        balances[multisig] = balances[multisig].sub(value);
-        balances[to] = balances[to].add(value);
-        _bounties = _bounties.sub(value);
-        Transfer(multisig, to, value);
-    }
-
-    function sendRequitixCoreTeamFundSupplyToken(address to, uint256 value) onlyOwner isActive {
-        require (
-            to != 0x0 && value > 0 && _requitixCoreTeamFundSupply >= value
-        );
-
-        balances[multisig] = balances[multisig].sub(value);
-        balances[to] = balances[to].add(value);
-        _requitixCoreTeamFundSupply = _requitixCoreTeamFundSupply.sub(value);
+        _companySupply = _companySupply.sub(value);
         Transfer(multisig, to, value);
     }
 
