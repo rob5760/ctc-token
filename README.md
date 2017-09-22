@@ -8,4 +8,4 @@ The ERC20 token contract (with source code) is published at: TBD
 
 ## Audit
 
-Contract audit: TBD
+Contract audited by [TargeAd](https://targead.com) - In progress
