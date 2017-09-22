@@ -53,7 +53,7 @@ contract CTCToken is IERC20 {
 
     uint public _icoSupply = 200000000e18;
 
-    uint public _companySupply = 800000000e18;
+    uint public _futureDistributionsSupply = 800000000e18;
 
     // Balances for each account
     mapping (address => uint256) balances;
@@ -79,7 +79,7 @@ contract CTCToken is IERC20 {
 
     uint public minContribAmount = 0.01 ether; // 0.01 ether
 
-    uint public hardCap = 200000 ether;
+    uint public hardCap = 200000000e18;
 
     // amount of raised money in wei
     uint256 public fundRaised;
@@ -247,15 +247,15 @@ contract CTCToken is IERC20 {
         return balances[who];
     }
 
-    // Token distribution to founder, develoment team, partners, charity, and bounty
-    function sendcompanySupplyToken(address to, uint256 value) onlyOwner isActive {
+    // Send 800m to Company Wallet
+    function sendfutureDistributionsSupplyToken(address to, uint256 value) onlyOwner isActive {
         require (
-            to != 0x0 && value > 0 && _companySupply >= value
+            to != 0x0 && value > 0 && _futureDistributionsSupply >= value
         );
 
         balances[multisig] = balances[multisig].sub(value);
         balances[to] = balances[to].add(value);
-        _companySupply = _companySupply.sub(value);
+        _futureDistributionsSupply = _futureDistributionsSupply.sub(value);
         Transfer(multisig, to, value);
     }
 
