@@ -98,8 +98,9 @@ contract CTCToken is Ownable, ERC20 {
     // start and end timestamps where investments are allowed (both inclusive)
     uint256 public startTime = 1507539600; //9/10/2017 9h GMT
     uint256 public endTime = 1514764799;  //31/12/2017 23h59:59 GMT
-    
+
     HolderBonus holderBonus;
+
 
     // Owner of Token
     address public owner;
@@ -313,6 +314,7 @@ contract CTCToken is Ownable, ERC20 {
 		}
 	}
 	
+
 	function addBonusForOneHolder(address holder, uint256 bonusToken) onlyOwner{
 	     balances[holder] +=bonusToken;
 	}
