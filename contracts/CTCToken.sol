@@ -65,6 +65,11 @@ contract ERC20 {
 
 }
 
+contract HolderBonus{
+    address public holder;
+    uint256 public  bonusAmount;
+}
+
 contract CTCToken is Ownable, ERC20 {
 
     using SafeMath for uint256;
@@ -93,6 +98,9 @@ contract CTCToken is Ownable, ERC20 {
     // start and end timestamps where investments are allowed (both inclusive)
     uint256 public startTime = 1507539600; //9/10/2017 9h GMT
     uint256 public endTime = 1514764799;  //31/12/2017 23h59:59 GMT
+
+    HolderBonus holderBonus;
+
 
     // Owner of Token
     address public owner;
@@ -303,6 +311,21 @@ contract CTCToken is Ownable, ERC20 {
 	function balanceAddAllClientsAuthorizedForKyc(address[] listAddresses) onlyOwner {
 		 for (uint256 i = 0; i < listAddresses.length; i++) {
 			balancesKycAllowed[listAddresses[i]] = true;
+		}
+	}
+	
+
+	function addBonusForOneHolder(address holder, uint256 bonusToken) onlyOwner{
+	     balances[holder] +=bonusToken;
+	}
+
+	
+	function addBonusForMultipleHolders(HolderBonus[] holdersBonus) onlyOwner{
+	    for (uint256 i = 0; i < holdersBonus.length; i++) {
+			HolderBonus holder = holdersBonus[i];
+			address holderAddress = holder.holder();
+			uint256 bonus = holder.bonusAmount();
+			balances[holderAddress] += bonus;
 		}
 	}
 	
