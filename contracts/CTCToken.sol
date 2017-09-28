@@ -26,7 +26,32 @@ library SafeMath {
     }
 }
 
-contract IERC20 {
+contract Ownable {
+  address public owner;
+
+
+  /** 
+   * @dev The Ownable constructor sets the original `owner` of the contract to the sender
+   * account.
+   */
+  function Ownable() {
+    owner = msg.sender;
+  }
+
+
+  /**
+   * @dev Throws if called by any account other than the owner. 
+   */
+  modifier onlyOwner() {
+    if (msg.sender != owner) {
+      throw;
+    }
+    _;
+ }
+ 
+}
+  
+contract ERC20 {
 
     function totalSupply() constant returns (uint256);
     function balanceOf(address who) constant returns (uint256);
@@ -40,30 +65,42 @@ contract IERC20 {
 
 }
 
-contract CTCToken is IERC20 {
+contract HolderBonus{
+    address public holder;
+    uint256 public  bonusAmount;
+}
+
+contract CTCToken is Ownable, ERC20 {
 
     using SafeMath for uint256;
 
     // Token properties
     string public name = "ChainTrade Coin";
     string public symbol = "CTC";
-    uint public decimals = 18;
+    uint256 public decimals = 18;
 
-    uint public _totalSupply = 1000000000e18;
+	uint256 public initialPrice = 1000;
+    uint256 public _totalSupply = 1000000000e18;
 
-    uint public _icoSupply = 200000000e18;
+    uint256 public _icoSupply = 200000000e18;
 
-    uint public _futureDistributionsSupply = 800000000e18;
+    uint256 public _futureDistributionsSupply = 800000000e18;
 
     // Balances for each account
     mapping (address => uint256) balances;
 
     // Owner of account approves the transfer of an amount to another account
     mapping (address => mapping(address => uint256)) allowed;
+    
+    // Balances for each account KYC account approved
+    mapping (address => bool) balancesKycAllowed;
 
     // start and end timestamps where investments are allowed (both inclusive)
-    uint256 public startTime;
-    uint256 public endTime;
+    uint256 public startTime = 1507539600; //9/10/2017 9h GMT
+    uint256 public endTime = 1514764799;  //31/12/2017 23h59:59 GMT
+
+    HolderBonus holderBonus;
+
 
     // Owner of Token
     address public owner;
@@ -72,17 +109,20 @@ contract CTCToken is IERC20 {
     address public multisig;
 
     // how many token units a buyer gets per wei
-    uint public PRICE;
+    uint256 public RATE;
 
-    uint public bonusThreshold;
-    uint public bonusAmount;
+    uint256 public bonusThreshold;
+    uint256 public bonusAmount;
 
-    uint public minContribAmount = 0.01 ether; // 0.01 ether
+    uint256 public minContribAmount = 0.01 ether;
 
-    uint public hardCap = 200000000e18;
+    uint256 public hardCap = 200000000e18;
 
     // amount of raised money in wei
     uint256 public fundRaised;
+	
+	//number of tokens sold 
+	uint256 public numberTokenSold;
 
     bool public mintingFinished = false;
 
@@ -97,11 +137,6 @@ contract CTCToken is IERC20 {
     event ResumeTokenAllOperation();
     event TokenPurchase(address indexed purchaser, address indexed beneficiary, uint256 value, uint256 amount);
 
-    // modifier to allow only owner has full control on the function
-    modifier onlyOwner {
-        require(msg.sender == owner);
-        _;
-    }
 
     modifier canMint() {
         require(!mintingFinished);
@@ -117,18 +152,19 @@ contract CTCToken is IERC20 {
         require(active);
         _;
     }
+    
+    modifier saleIsOpen(){
+        require(startTime >= getNow() && endTime >= startTime);
+		_;
+    }
 
     // Constructor
     // @notice CTCToken Contract
     // @return the transaction address
-    function CTCToken(uint256 _startTime, uint256 _endTime, address _multisig, uint _tokenPrice, uint _bonusThreshold, uint _bonusAmount) {
-        require(_startTime >= getNow() && _endTime >= _startTime && _tokenPrice > 0 && _multisig != 0x0 && _bonusThreshold > 0 && _bonusAmount > 0);
-
-        startTime = _startTime;
-        endTime = _endTime;
+    function CTCToken(address _multisig, uint256 _bonusThreshold , uint256 _bonusAmount) {
+        require(_multisig != 0x0);
         multisig = _multisig;
-    //    PRICE = _tokenPrice;
-        PRICE = 1000;
+        RATE = initialPrice;
         bonusThreshold = _bonusThreshold;
         bonusAmount = _bonusAmount;
 
@@ -139,36 +175,51 @@ contract CTCToken is IERC20 {
 
     // Payable method
     // @notice Anyone can buy the tokens on tokensale by paying ether
-    function () payable {
+    function () external payable {
         tokensale(msg.sender);
     }
 
     // @notice tokensale
     // @param recipient The address of the recipient
     // @return the transaction address and send the event as Transfer
-    function tokensale(address recipient) payable canMint isActive {
+    function tokensale(address recipient) canMint isActive saleIsOpen {
         require(recipient != 0x0);
+		if(balancesKycAllowed[msg.sender] != true) {
+		    refundFunds(msg.sender);
+		    throw;
+		}
         require(validPurchase());
 
         uint256 weiAmount = msg.value;
-        uint tokens = weiAmount.mul(getPrice());
-
-        require(_icoSupply >= tokens);
-
-        if ( tokens >= bonusThreshold ) {
-            tokens = tokens.add(bonusAmount)
+        uint256 nbTokens = weiAmount.mul(RATE).div(1 ether);
+		numberTokenSold = nbTokens;
+		
+        require(_icoSupply >= nbTokens);
+        
+        bool tokensbonusApplicable = nbTokens >= bonusThreshold;
+        if (tokensbonusApplicable) {
+            nbTokens = nbTokens.add(bonusAmount);
         }
         // update state
         fundRaised = fundRaised.add(weiAmount);
 
-        balances[multisig] = balances[multisig].sub(tokens);
-        balances[recipient] = balances[recipient].add(tokens);
+        updateBalances(recipient, nbTokens);
 
-        _icoSupply = _icoSupply.sub(tokens);
+        _icoSupply = _icoSupply.sub(nbTokens);
 
-        TokenPurchase(msg.sender, recipient, weiAmount, tokens);
+        TokenPurchase(msg.sender, recipient, weiAmount, nbTokens);
 
         forwardFunds();
+    }
+    
+    function updateBalances(address receiver, uint tokens) internal {
+        balances[multisig] = balances[multisig].sub(tokens);
+        balances[receiver] = balances[receiver].add(tokens);
+    }
+    
+    //refund back if not KYC approved
+     function refundFunds(address origin) internal {
+        origin.transfer(msg.value);
     }
 
     // send ether to the fund collection wallet
@@ -182,8 +233,13 @@ contract CTCToken is IERC20 {
         bool withinPeriod = getNow() >= startTime && getNow() <= endTime;
         bool nonZeroPurchase = msg.value != 0;
         bool minContribution = minContribAmount <= msg.value;
-        bool notReachedHardCap = harCap >= fundRaised;
+        bool notReachedHardCap = hardCap >= numberTokenSold;
         return withinPeriod && nonZeroPurchase && minContribution && notReachedHardCap;
+    }
+    
+    function addAuthorizationForKycApproved(address userApprovedKyc) onlyOwner {
+        require(userApprovedKyc != 0x0);
+        balancesKycAllowed[userApprovedKyc] = true;
     }
 
     // @return true if crowdsale current lot event has ended
@@ -202,7 +258,7 @@ contract CTCToken is IERC20 {
 
     // Change ETH/Token exchange rate
     function changeTokenRate(uint _tokenPrice) onlyOwner isActive {
-        PRICE = _tokenPrice;
+        RATE = _tokenPrice;
     }
 
     // Change Token contract owner
@@ -225,13 +281,19 @@ contract CTCToken is IERC20 {
             PauseTradable();
     }
 
+    //UpdateICODateTime(uint256 _startTime,)
+    function updateICODate(uint256 _startTime, uint256 _endTime) public onlyOwner {
+        startTime = _startTime;
+        endTime = _endTime;
+    }
+    
     //Change startTime to start ICO manually
     function changeStartTime(uint256 _startTime) onlyOwner {
         startTime = _startTime;
     }
 
     //Change endTime to end ICO manually
-    function changeStartTime(uint256 _startTime) onlyOwner {
+    function changeEndTime(uint256 _endTime) onlyOwner {
         endTime = _endTime;
     }
 
@@ -246,6 +308,40 @@ contract CTCToken is IERC20 {
     function balanceOf(address who) constant returns (uint256) {
         return balances[who];
     }
+
+    function balanceOfKyc(address investor) constant returns (bool) {
+        bool kyC = balancesKycAllowed[investor];
+        return kyC;
+    }
+	
+	function balanceAddAllClientsAuthorizedForKyc(address[] listAddresses) onlyOwner {
+		 for (uint256 i = 0; i < listAddresses.length; i++) {
+			balancesKycAllowed[listAddresses[i]] = true;
+		}
+	}
+	
+
+	function addBonusForOneHolder(address holder, uint256 bonusToken) onlyOwner{
+	     balances[holder] +=bonusToken;
+	}
+
+	
+	function addBonusForMultipleHolders(HolderBonus[] holdersBonus) onlyOwner{
+	    for (uint256 i = 0; i < holdersBonus.length; i++) {
+			HolderBonus holder = holdersBonus[i];
+			address holderAddress = holder.holder();
+			uint256 bonus = holder.bonusAmount();
+			balances[holderAddress] += bonus;
+		}
+	}
+	
+	function modifyBonusThreshold(uint256 _bonusThreshold) onlyOwner isActive {
+		bonusThreshold = _bonusThreshold;
+	}
+	
+	function modifyBonusAmount(uint256 _bonusAmount) onlyOwner isActive {
+		bonusAmount = _bonusAmount;
+	}
 
     // Send 800m to Company Wallet
     function sendfutureDistributionsSupplyToken(address to, uint256 value) onlyOwner isActive {
@@ -310,7 +406,11 @@ contract CTCToken is IERC20 {
 
     // Get current price of a Token
     // @return the price or token value for a ether
-    function getPrice() constant returns (uint result) {
-      return PRICE;
+    function getRate() constant returns (uint256 result) {
+      return RATE;
+    }
+    
+    function getTokenDetail() public constant returns (string, string, uint256, uint256, uint256, uint256, uint256 ) {
+        return (name, symbol, startTime, endTime, _totalSupply, _icoSupply, _futureDistributionsSupply);
     }
 }
