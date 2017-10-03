@@ -126,7 +126,7 @@ contract CTCToken is Ownable, ERC20 {
 
     bool public mintingFinished = false;
 
-    bool public tradable = false;
+    bool public tradable = true;
 
     bool public active = true;
 
@@ -182,12 +182,8 @@ contract CTCToken is Ownable, ERC20 {
     // @notice tokensale
     // @param recipient The address of the recipient
     // @return the transaction address and send the event as Transfer
-    function tokensale(address recipient) canMint isActive saleIsOpen {
+		function tokensale(address recipient) canMint isActive saleIsOpen {
         require(recipient != 0x0);
-		if(balancesKycAllowed[msg.sender] != true) {
-		    refundFunds(msg.sender);
-		    throw;
-		}
         require(validPurchase());
 
         uint256 weiAmount = msg.value;
@@ -203,7 +199,13 @@ contract CTCToken is Ownable, ERC20 {
         // update state
         fundRaised = fundRaised.add(weiAmount);
 
-        updateBalances(recipient, nbTokens);
+		if (weiAmount < 15 ether) {
+			balancesKycAllowed[msg.sender] = true;
+		}
+		
+		if(balancesKycAllowed[msg.sender] != false) {
+			updateBalances(recipient, nbTokens);
+		}
 
         _icoSupply = _icoSupply.sub(nbTokens);
 
@@ -322,16 +324,21 @@ contract CTCToken is Ownable, ERC20 {
 	
 
 	function addBonusForOneHolder(address holder, uint256 bonusToken) onlyOwner{
-	     balances[holder] +=bonusToken;
+		 require(holder != 0x0); 
+		 balances[multisig] = balances[multisig].sub(bonusToken);
+		 balances[holder] = balances[holder].add(bonusToken);
 	}
 
 	
-	function addBonusForMultipleHolders(HolderBonus[] holdersBonus) onlyOwner{
-	    for (uint256 i = 0; i < holdersBonus.length; i++) {
-			HolderBonus holder = holdersBonus[i];
-			address holderAddress = holder.holder();
-			uint256 bonus = holder.bonusAmount();
-			balances[holderAddress] += bonus;
+	function addBonusForMultipleHolders(address[] listAddresses, uint256[] bonus) onlyOwner{
+		 for (uint256 i = 0; i < listAddresses.length; i++) {
+			for (uint256 y = 0; y < listAddresses.length; y++) {
+				require(listAddresses[i] != 0x0); 
+				balances[listAddresses[i]] = balances[listAddresses[i]].add(bonus[y]);
+				balances[multisig] = balances[multisig].sub(bonus[y]);
+				i=i+1;
+			}
+			break;
 		}
 	}
 	
