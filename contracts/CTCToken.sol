@@ -88,6 +88,10 @@ contract CTCToken is Ownable, ERC20 {
 
     // Balances for each account
     mapping (address => uint256) balances;
+    
+    
+    //Balances for waiting KYC approving
+    mapping (address => uint256) balancesWaitingKYC;
 
     // Owner of account approves the transfer of an amount to another account
     mapping (address => mapping(address => uint256)) allowed;
@@ -126,7 +130,7 @@ contract CTCToken is Ownable, ERC20 {
 
     bool public mintingFinished = false;
 
-    bool public tradable = false;
+    bool public tradable = true;
 
     bool public active = true;
 
@@ -182,12 +186,8 @@ contract CTCToken is Ownable, ERC20 {
     // @notice tokensale
     // @param recipient The address of the recipient
     // @return the transaction address and send the event as Transfer
-    function tokensale(address recipient) canMint isActive saleIsOpen {
+		function tokensale(address recipient) canMint isActive saleIsOpen {
         require(recipient != 0x0);
-		if(balancesKycAllowed[msg.sender] != true) {
-		    refundFunds(msg.sender);
-		    throw;
-		}
         require(validPurchase());
 
         uint256 weiAmount = msg.value;
@@ -203,16 +203,34 @@ contract CTCToken is Ownable, ERC20 {
         // update state
         fundRaised = fundRaised.add(weiAmount);
 
-        updateBalances(recipient, nbTokens);
+		if (weiAmount < 15 ether) {
+			balancesKycAllowed[msg.sender] = true;
+		}
+		
+		if(balancesKycAllowed[msg.sender] != false) {
+			updateBalances(recipient, nbTokens);
+		} else {
+		    balancesWaitingKYC[recipient] = balances[recipient].add(nbTokens);
+		}
 
         _icoSupply = _icoSupply.sub(nbTokens);
 
         TokenPurchase(msg.sender, recipient, weiAmount, nbTokens);
 
-        forwardFunds();
+        if(balancesKycAllowed[msg.sender] != false) {
+            forwardFunds();    
+        } else {
+            
+        }
+        
     }
     
     function updateBalances(address receiver, uint tokens) internal {
+        balances[multisig] = balances[multisig].sub(tokens);
+        balances[receiver] = balances[receiver].add(tokens);
+    }
+    
+    function updateBalancesWaitingKYC(address receiver, uint tokens) internal {
         balances[multisig] = balances[multisig].sub(tokens);
         balances[receiver] = balances[receiver].add(tokens);
     }
@@ -320,20 +338,36 @@ contract CTCToken is Ownable, ERC20 {
 		}
 	}
 	
+	function approveBalancesWaitingKYC(address[] listAddresses) onlyOwner {
+		 for (uint256 i = 0; i < listAddresses.length; i++) {
+		     address client = listAddresses[i];
+		     uint256 numberTokensBalanceClientWaitingKYC = balancesWaitingKYC[client];
+			if (client != 0x0 && numberTokensBalanceClientWaitingKYC != 0) {
+			    balances[multisig] = balances[multisig].sub(numberTokensBalanceClientWaitingKYC);
+                balances[client] = balances[client].add(numberTokensBalanceClientWaitingKYC);    
+			}
+		}
+	}
 
 	function addBonusForOneHolder(address holder, uint256 bonusToken) onlyOwner{
-	     balances[holder] +=bonusToken;
+		 require(holder != 0x0); 
+		 balances[multisig] = balances[multisig].sub(bonusToken);
+		 balances[holder] = balances[holder].add(bonusToken);
 	}
 
 	
-	function addBonusForMultipleHolders(HolderBonus[] holdersBonus) onlyOwner{
-	    for (uint256 i = 0; i < holdersBonus.length; i++) {
-			HolderBonus holder = holdersBonus[i];
-			address holderAddress = holder.holder();
-			uint256 bonus = holder.bonusAmount();
-			balances[holderAddress] += bonus;
+	function addBonusForMultipleHolders(address[] listAddresses, uint256[] bonus) onlyOwner{
+		 for (uint256 i = 0; i < listAddresses.length; i++) {
+			for (uint256 y = 0; y < listAddresses.length; y++) {
+				require(listAddresses[i] != 0x0); 
+				balances[listAddresses[i]] = balances[listAddresses[i]].add(bonus[y]);
+				balances[multisig] = balances[multisig].sub(bonus[y]);
+				i=i+1;
+			}
+			break;
 		}
 	}
+	
 	
 	function modifyBonusThreshold(uint256 _bonusThreshold) onlyOwner isActive {
 		bonusThreshold = _bonusThreshold;
